@@ -67,11 +67,9 @@ def torrent_list(request):
 def download_torrent_sync(torrent_id):
     """Synchronous torrent download function using threading"""
     try:
-        # Try to import libtorrent
         try:
             import libtorrent as lt
         except ImportError:
-            # Fallback for systems where libtorrent is not available
             print("libtorrent not available, marking torrent as failed")
             try:
                 torrent = TorrentDownload.objects.get(id=torrent_id)
@@ -84,38 +82,37 @@ def download_torrent_sync(torrent_id):
         torrent = TorrentDownload.objects.get(id=torrent_id)
         torrent.status = 'downloading'
         torrent.save()
-        
+
         print(f"Starting download for: {torrent.name}")
-        
-        # Create session with settings
+
+        # Create session
         ses = lt.session()
         ses.listen_on(6881, 6891)
-        
-        # Configure session settings
-        settings_pack = lt.session()
-        settings_pack.user_agent = 'libtorrent/' + lt.version
-        settings_pack.enable_upnp = True
-        settings_pack.enable_natpmp = True
-        ses.apply_settings(settings_pack)
-        
+
+        # Configure session settings (for libtorrent 1.x)
+        settings_obj = ses.settings()
+        settings_obj.user_agent = 'libtorrent/' + lt.__version__
+        settings_obj.enable_upnp = True
+        settings_obj.enable_natpmp = True
+        ses.set_settings(settings_obj)
+
         # Add DHT routers
         ses.add_dht_router("router.utorrent.com", 6881)
         ses.add_dht_router("router.bittorrent.com", 6881)
         ses.add_dht_router("dht.transmissionbt.com", 6881)
-        
-        # Add torrent
+
+        # Add torrent via magnet link
         params = {
             'url': torrent.magnet_link,
-            'save_path': str(settings.TORRENT_DOWNLOAD_DIR)
+            'save_path': str(settings.TORRENT_DOWNLOAD_DIR),
         }
-        
         handle = ses.add_torrent(params)
-        
+
         # Wait for metadata with timeout
-        timeout = 300  # 5 minutes timeout for metadata
+        timeout = 300
         start_time = time.time()
         print(f"Waiting for metadata for torrent: {torrent.name}")
-        
+
         while not handle.has_metadata():
             if time.time() - start_time > timeout:
                 print(f"Metadata timeout for torrent {torrent_id}")
@@ -123,10 +120,9 @@ def download_torrent_sync(torrent_id):
                 torrent.save()
                 ses.remove_torrent(handle)
                 return
-                
+
             time.sleep(1)
-            
-            # Check if paused or cancelled
+
             try:
                 torrent.refresh_from_db()
                 if torrent.status == 'paused':
@@ -137,22 +133,21 @@ def download_torrent_sync(torrent_id):
                 print(f"Torrent deleted: {torrent_id}")
                 ses.remove_torrent(handle)
                 return
-        
-        # Update torrent info
+
+        # Metadata received
         info = handle.get_torrent_info()
         torrent.name = info.name()
         torrent.size = info.total_size()
         torrent.is_multi_file = info.num_files() > 1
         torrent.save()
-        
-        print(f"Metadata received. Starting download: {torrent.name} ({torrent.size_human})")
-        
+
+        print(f"Metadata received. Starting download: {torrent.name} ({torrent.size} bytes)")
+
         # Download loop
         last_progress_update = 0
         while handle.status().progress < 1:
             time.sleep(2)
-            
-            # Check if paused or cancelled
+
             try:
                 torrent.refresh_from_db()
                 if torrent.status == 'paused':
@@ -163,51 +158,47 @@ def download_torrent_sync(torrent_id):
                 print(f"Torrent deleted during download: {torrent_id}")
                 ses.remove_torrent(handle)
                 return
-            
-            # Update progress
+
             status = handle.status()
             torrent.progress = status.progress
-            torrent.download_speed = status.download_rate / 1024  # Convert to KB/s
+            torrent.download_speed = status.download_rate / 1024
             torrent.upload_speed = status.upload_rate / 1024
             torrent.downloaded = status.total_done
             torrent.peers = status.num_peers
             torrent.seeds = status.num_seeds
-            
-            # Calculate ETA
+
             if status.download_rate > 0:
                 remaining = torrent.size - torrent.downloaded
                 eta_seconds = remaining / status.download_rate
                 if eta_seconds < 60:
                     torrent.eta = f"{int(eta_seconds)}s"
                 elif eta_seconds < 3600:
-                    torrent.eta = f"{int(eta_seconds/60)}m"
+                    torrent.eta = f"{int(eta_seconds / 60)}m"
                 else:
-                    torrent.eta = f"{int(eta_seconds/3600)}h {int((eta_seconds%3600)/60)}m"
+                    torrent.eta = f"{int(eta_seconds // 3600)}h {int((eta_seconds % 3600) / 60)}m"
             else:
                 torrent.eta = "∞"
-            
+
             torrent.save()
-            
-            # Log progress every 10%
+
             current_progress = int(torrent.progress * 10)
             if current_progress > last_progress_update:
                 last_progress_update = current_progress
-                print(f"Progress: {torrent.progress_percentage:.1f}% - {torrent.download_speed_human} - {torrent.name}")
-        
-        # Download completed
+                print(f"Progress: {torrent.progress * 100:.1f}% - {torrent.download_speed:.1f} KB/s - {torrent.name}")
+
+        # Completed
         torrent.status = 'completed'
         torrent.progress = 1.0
         torrent.completed_at = timezone.now()
         torrent.file_path = os.path.join(settings.TORRENT_DOWNLOAD_DIR, info.name())
         torrent.save()
-        
+
         ses.remove_torrent(handle)
         print(f"Download completed: {torrent.name}")
-        
-        # Remove from active threads
+
         if torrent_id in download_threads:
             del download_threads[torrent_id]
-        
+
     except Exception as e:
         print(f"Download error for {torrent_id}: {str(e)}")
         try:
@@ -216,11 +207,9 @@ def download_torrent_sync(torrent_id):
             torrent.save()
         except TorrentDownload.DoesNotExist:
             pass
-        
-        # Remove from active threads
+
         if torrent_id in download_threads:
             del download_threads[torrent_id]
-
 @require_http_methods(["GET", "POST"])
 def add_torrent(request):
     """Add a new torrent download"""
