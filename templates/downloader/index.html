@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Torrent Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">
+                <i class="fas fa-download text-blue-600"></i>
+                Torrent Downloader
+            </h1>
+            <p class="text-gray-600">Download torrents with ease</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
+                        <i class="fas fa-list text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-2xl font-semibold text-gray-800">{{ stats.total }}</p>
+                        <p class="text-gray-600">Total Torrents</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-full bg-yellow-100 text-yellow-600 mr-4">
+                        <i class="fas fa-spinner text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-2xl font-semibold text-gray-800">{{ stats.downloading }}</p>
+                        <p class="text-gray-600">Downloading</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-full bg-green-100 text-green-600 mr-4">
+                        <i class="fas fa-check text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-2xl font-semibold text-gray-800">{{ stats.completed }}</p>
+                        <p class="text-gray-600">Completed</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-full bg-red-100 text-red-600 mr-4">
+                        <i class="fas fa-times text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-2xl font-semibold text-gray-800">{{ stats.failed }}</p>
+                        <p class="text-gray-600">Failed</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Torrent Form -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">
+                <i class="fas fa-plus text-blue-600"></i>
+                Add New Torrent
+            </h2>
+            
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="mb-4 p-4 rounded-md {% if message.tags == 'success' %}bg-green-100 text-green-700{% elif message.tags == 'error' %}bg-red-100 text-red-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            
+            <form method="post" action="{% url 'add_torrent' %}">
+                {% csrf_token %}
+                <div class="mb-4">
+                    <label for="{{ form.magnet_link.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        Magnet Link
+                    </label>
+                    {{ form.magnet_link }}
+                </div>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+                    <i class="fas fa-plus mr-2"></i>
+                    Add Torrent
+                </button>
+            </form>
+        </div>
+
+        <!-- Torrents List -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-2xl font-semibold text-gray-800">
+                    <i class="fas fa-list text-blue-600"></i>
+                    Torrent Downloads
+                </h2>
+            </div>
+            
+            {% if torrents %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Speed</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ETA</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for torrent in torrents %}
+                                <tr class="hover:bg-gray-50" x-data="torrentRow('{{ torrent.id }}')" x-init="startPolling()">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="text-sm font-medium text-gray-900">{{ torrent.name|truncatechars:50 }}</div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span x-text="status" :class="{
+                                            'bg-yellow-100 text-yellow-800': status === 'downloading' || status === 'pending',
+                                            'bg-green-100 text-green-800': status === 'completed',
+                                            'bg-red-100 text-red-800': status === 'failed',
+                                            'bg-gray-100 text-gray-800': status === 'paused'
+                                        }" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full">
+                                            {{ torrent.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div :style="`width: ${progress}%`" class="bg-blue-600 h-2 rounded-full transition-all duration-300"></div>
+                                        </div>
+                                        <span x-text="`${progress.toFixed(1)}%`" class="text-xs text-gray-500 mt-1"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <span x-text="downloaded"></span> / <span x-text="size"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <div>↓ <span x-text="downloadSpeed"></span></div>
+                                        <div>↑ <span x-text="uploadSpeed"></span></div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <span x-text="eta"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <div class="flex space-x-2">
+                                            {% if torrent.status == 'completed' %}
+                                                <a href="{% url 'download_file' torrent.id %}" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition duration-200">
+                                                    <i class="fas fa-download"></i>
+                                                </a>
+                                            {% endif %}
+                                            
+                                            {% if torrent.status == 'downloading' %}
+                                                <form method="post" action="{% url 'pause_torrent' torrent.id %}" class="inline">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-sm transition duration-200">
+                                                        <i class="fas fa-pause"></i>
+                                                    </button>
+                                                </form>
+                                            {% elif torrent.status == 'paused' %}
+                                                <form method="post" action="{% url 'resume_torrent' torrent.id %}" class="inline">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition duration-200">
+                                                        <i class="fas fa-play"></i>
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                            
+                                            <form method="post" action="{% url 'delete_torrent' torrent.id %}" class="inline" onsubmit="return confirm('Are you sure you want to delete this torrent and its files?')">
+                                                {% csrf_token %}
+                                                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition duration-200">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                {% if is_paginated %}
+                    <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                        <div class="flex-1 flex justify-between sm:hidden">
+                            {% if page_obj.has_previous %}
+                                <a href="?page={{ page_obj.previous_page_number }}" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    Previous
+                                </a>
+                            {% endif %}
+                            {% if page_obj.has_next %}
+                                <a href="?page={{ page_obj.next_page_number }}" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    Next
+                                </a>
+                            {% endif %}
+                        </div>
+                        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                            <div>
+                                <p class="text-sm text-gray-700">
+                                    Showing <span class="font-medium">{{ page_obj.start_index }}</span> to <span class="font-medium">{{ page_obj.end_index }}</span> of <span class="font-medium">{{ page_obj.paginator.count }}</span> results
+                                </p>
+                            </div>
+                            <div>
+                                <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                    {% if page_obj.has_previous %}
+                                        <a href="?page={{ page_obj.previous_page_number }}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                            <i class="fas fa-chevron-left"></i>
+                                        </a>
+                                    {% endif %}
+                                    
+                                    {% for num in page_obj.paginator.page_range %}
+                                        {% if page_obj.number == num %}
+                                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-blue-50 text-sm font-medium text-blue-600">
+                                                {{ num }}
+                                            </span>
+                                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                            <a href="?page={{ num }}" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                                {{ num }}
+                                            </a>
+                                        {% endif %}
+                                    {% endfor %}
+                                    
+                                    {% if page_obj.has_next %}
+                                        <a href="?page={{ page_obj.next_page_number }}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </a>
+                                    {% endif %}
+                                </nav>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% else %}
+                <div class="text-center py-12">
+                    <i class="fas fa-download text-4xl text-gray-400 mb-4"></i>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">No torrents yet</h3>
+                    <p class="text-gray-500">Add your first torrent using the form above.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function torrentRow(torrentId) {
+            return {
+                status: 'pending',
+                progress: 0,
+                downloadSpeed: '0 B/s',
+                uploadSpeed: '0 B/s',
+                downloaded: '0 B',
+                size: '0 B',
+                peers: 0,
+                seeds: 0,
+                eta: '∞',
+                polling: null,
+                
+                startPolling() {
+                    this.updateStatus();
+                    this.polling = setInterval(() => {
+                        this.updateStatus();
+                    }, 2000);
+                },
+                
+                async updateStatus() {
+                    try {
+                        const response = await fetch(`/status/${torrentId}/`);
+                        const data = await response.json();
+                        
+                        this.status = data.status;
+                        this.progress = data.progress;
+                        this.downloadSpeed = data.download_speed;
+                        this.uploadSpeed = data.upload_speed;
+                        this.downloaded = data.downloaded;
+                        this.size = data.size;
+                        this.peers = data.peers;
+                        this.seeds = data.seeds;
+                        this.eta = data.eta;
+                        
+                        // Stop polling if completed or failed
+                        if (data.status === 'completed' || data.status === 'failed') {
+                            if (this.polling) {
+                                clearInterval(this.polling);
+                                this.polling = null;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error fetching torrent status:', error);
+                    }
+                }
+            }
+        }
+        
+        // Auto-refresh page every 30 seconds for new torrents
+        setInterval(() => {
+            // Only refresh if no torrents are downloading
+            const downloadingElements = document.querySelectorAll('[data-status="downloading"]');
+            if (downloadingElements.length === 0) {
+                window.location.reload();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

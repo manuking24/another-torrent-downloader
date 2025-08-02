@@ -1,0 +1,17 @@
+Django==4.2
+django-cors-headers==4.4.0
+django-widget-tweaks==1.5.0
+django-ckeditor==6.7.0
+django-taggit==6.1.0
+gunicorn==23.0.0
+libtorrent==2.0.9
+channels==4.2.2
+channels_redis==4.2.1
+redis==6.1.1
+celery==5.5.3
+python-dotenv==1.0.0
+python-magic==0.4.27
+Pillow==10.0.1
+requests==2.32.3
+daphne==4.1.2
+python-decouple==3.8
