@@ -65,7 +65,7 @@ def torrent_list(request):
     return render(request, 'downloader/index.html', context)
 
 def download_torrent_sync(torrent_id):
-    """Synchronous torrent download function using threading"""
+    """Synchronous torrent download function using libtorrent 2.0.9"""
     try:
         try:
             import libtorrent as lt
@@ -85,16 +85,18 @@ def download_torrent_sync(torrent_id):
 
         print(f"Starting download for: {torrent.name}")
 
-        # Create session
-        ses = lt.session()
+        # Create session with settings_pack
+        settings_pack = lt.settings_pack()
+        settings_pack.set_str(lt.settings_pack.user_agent, 'libtorrent/' + lt.__version__)
+        settings_pack.set_bool(lt.settings_pack.enable_upnp, True)
+        settings_pack.set_bool(lt.settings_pack.enable_natpmp, True)
+        settings_pack.set_bool(lt.settings_pack.enable_dht, True)
+        settings_pack.set_bool(lt.settings_pack.enable_lsd, True)
+        settings_pack.set_bool(lt.settings_pack.enable_outgoing_utp, True)
+        settings_pack.set_bool(lt.settings_pack.enable_incoming_utp, True)
+        
+        ses = lt.session(settings_pack)
         ses.listen_on(6881, 6891)
-
-        # Configure session settings (for libtorrent 1.x)
-        settings_obj = ses.settings()
-        settings_obj.user_agent = 'libtorrent/' + lt.__version__
-        settings_obj.enable_upnp = True
-        settings_obj.enable_natpmp = True
-        ses.set_settings(settings_obj)
 
         # Add DHT routers
         ses.add_dht_router("router.utorrent.com", 6881)
@@ -105,11 +107,12 @@ def download_torrent_sync(torrent_id):
         params = {
             'url': torrent.magnet_link,
             'save_path': str(settings.TORRENT_DOWNLOAD_DIR),
+            'storage_mode': lt.storage_mode_t.storage_mode_sparse,
         }
         handle = ses.add_torrent(params)
 
-        # Wait for metadata with timeout
-        timeout = 300
+        # Wait for metadata
+        timeout = 300  # 5 minutes
         start_time = time.time()
         print(f"Waiting for metadata for torrent: {torrent.name}")
 
@@ -161,12 +164,13 @@ def download_torrent_sync(torrent_id):
 
             status = handle.status()
             torrent.progress = status.progress
-            torrent.download_speed = status.download_rate / 1024
+            torrent.download_speed = status.download_rate / 1024  # KB/s
             torrent.upload_speed = status.upload_rate / 1024
             torrent.downloaded = status.total_done
             torrent.peers = status.num_peers
             torrent.seeds = status.num_seeds
 
+            # ETA calculation
             if status.download_rate > 0:
                 remaining = torrent.size - torrent.downloaded
                 eta_seconds = remaining / status.download_rate
@@ -181,12 +185,13 @@ def download_torrent_sync(torrent_id):
 
             torrent.save()
 
+            # Log every 10% progress
             current_progress = int(torrent.progress * 10)
             if current_progress > last_progress_update:
                 last_progress_update = current_progress
                 print(f"Progress: {torrent.progress * 100:.1f}% - {torrent.download_speed:.1f} KB/s - {torrent.name}")
 
-        # Completed
+        # Download complete
         torrent.status = 'completed'
         torrent.progress = 1.0
         torrent.completed_at = timezone.now()
@@ -210,6 +215,7 @@ def download_torrent_sync(torrent_id):
 
         if torrent_id in download_threads:
             del download_threads[torrent_id]
+
 @require_http_methods(["GET", "POST"])
 def add_torrent(request):
     """Add a new torrent download"""
