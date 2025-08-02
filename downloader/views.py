@@ -92,7 +92,7 @@ def download_torrent_sync(torrent_id):
         ses.listen_on(6881, 6891)
         
         # Configure session settings
-        settings_pack = lt.settings_pack()
+        settings_pack = lt.session()
         settings_pack.user_agent = 'libtorrent/' + lt.version
         settings_pack.enable_upnp = True
         settings_pack.enable_natpmp = True
