@@ -133,9 +133,10 @@ def download_torrent_sync(torrent_id):
 
         # Add torrent using add_torrent_params (available in your version)
         try:
+            from django.conf import settings as django_settings
             params = lt.add_torrent_params()
             params.url = torrent.magnet_link
-            params.save_path = str(settings.TORRENT_DOWNLOAD_DIR)
+            params.save_path = str(django_settings.TORRENT_DOWNLOAD_DIR)
             
             # Set storage mode if available
             if hasattr(lt, 'storage_mode_t'):
@@ -284,7 +285,7 @@ def download_torrent_sync(torrent_id):
             torrent.status = 'completed'
             torrent.progress = 1.0
             torrent.completed_at = timezone.now()
-            torrent.file_path = os.path.join(settings.TORRENT_DOWNLOAD_DIR, info.name())
+            torrent.file_path = os.path.join(django_settings.TORRENT_DOWNLOAD_DIR, info.name())
             torrent.save()
 
             print(f"🎉 Download completed: {torrent.name}")
