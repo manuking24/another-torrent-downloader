@@ -1,13 +1,5 @@
 FROM python:3.8.10-slim
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libboost-python-dev \
-    libboost-system-dev \
-    pkg-config \
-    libtorrent-rasterbar-dev \
-    python3-libtorrent \
-    redis-tools \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
